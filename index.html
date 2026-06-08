@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>Gym Diary</title>
+
+  <!-- PWA / iOS home-screen -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Gym Diary" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 9v6M7 7.5v9M17 7.5v9M20 9v6M7.5 12h9"/>
+          </svg>
+        </span>
+        <div>
+          <div class="brand-title">Gym Diary</div>
+          <div class="brand-sub" id="todayDate"></div>
+        </div>
+      </div>
+      <div class="streak-chip" id="streakChip" title="Current streak">
+        <svg class="flame" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12.8 2c.4 2.4 1.8 3.5 3 5 1.2 1.6 2.2 3.2 2.2 5.7a6 6 0 1 1-12 0c0-1.5.5-2.7 1.4-3.7-.1 1 .5 2 1.4 2.6-.4-1.9.2-4 1.4-5.3 1-1.1.8-2.7.5-4.1 1 .5 1.9 1.5 2.4 2.9.5-1.1.4-2.3-.7-3.1z"/>
+        </svg>
+        <span id="streakCount">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab" data-tab="today" aria-label="Today">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6M7 7v10M17 7v10M20 9v6M7 12h10"/></svg></span>
+      <span>Today</span>
+    </button>
+    <button class="tab" data-tab="macros" aria-label="Macros">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a2 2 0 0 0 2 2 2 2 0 0 0 2-2V3M8 10v11M16.5 3c-1.4 0-2.2 1.9-2.2 4.2s.8 3.6 2.2 3.6M16.5 3v18"/></svg></span>
+      <span>Macros</span>
+    </button>
+    <button class="tab" data-tab="history" aria-label="History">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v15a1 1 0 0 0 1 1h15M7.5 14l3.5-4 3 2.6L20 7M20 7h-3.4M20 7v3.4"/></svg></span>
+      <span>History</span>
+    </button>
+    <button class="tab" data-tab="plan" aria-label="Plan">
+      <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="17" rx="3"/><rect x="9" y="2.5" width="6" height="3.5" rx="1.4"/><path d="M9 11.5h6M9 15.5h4"/></svg></span>
+      <span>Plan</span>
+    </button>
+  </nav>
+
+  <script src="data.js"></script>
+  <script src="exercise-meta.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function (e) { console.warn("SW failed", e); });
+      });
+    }
+  </script>
+</body>
+</html>
