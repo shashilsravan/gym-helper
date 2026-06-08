@@ -26,8 +26,49 @@
     chevL: `<path d="M14.5 5l-7 7 7 7"/>`,
     chevR: `<path d="M9.5 5l7 7-7 7"/>`,
     chevD: `<path d="M5 9l7 7 7-7"/>`,
-    moon: `<path d="M20 14.2A8 8 0 0 1 9.8 4 7 7 0 1 0 20 14.2z"/>`
+    moon: `<path d="M20 14.2A8 8 0 0 1 9.8 4 7 7 0 1 0 20 14.2z"/>`,
+    sun: `<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.3 4.3l1.6 1.6M18.1 18.1l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.3 19.7l1.6-1.6M18.1 5.9l1.6-1.6"/>`
   };
+  function catColorFor(day) {
+    const t = shortFocus(day.focus);
+    return t === "Push" ? "var(--blue)" : t === "Pull" ? "var(--green)" : t === "Legs" ? "var(--orange)" : "var(--label3)";
+  }
+
+  /* Apple-Fitness double ring for a calendar day (outer = workout, inner = macros) */
+  function dayRings(wpct, mpct, o) {
+    o = o || {};
+    const size = 44, c = size / 2, sw = 3.2;
+    const rO = c - sw / 2 - 0.5;        // outer ring radius
+    const rI = rO - sw - 1.6;           // inner ring radius
+    const cO = 2 * Math.PI * rO, cI = 2 * Math.PI * rI;
+    const clamp = v => Math.max(0, Math.min(100, v));
+    const offO = cO * (1 - clamp(wpct) / 100), offI = cI * (1 - clamp(mpct) / 100);
+    const wcol = o.wcol || "var(--green)", mcol = o.mcol || "var(--blue)";
+    return `<svg viewBox="0 0 ${size} ${size}" class="dayrings">
+      <circle cx="${c}" cy="${c}" r="${rO}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
+      <circle cx="${c}" cy="${c}" r="${rI}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
+      <circle cx="${c}" cy="${c}" r="${rO}" fill="none" stroke="${wcol}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${cO.toFixed(1)}" stroke-dashoffset="${offO.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/>
+      <circle cx="${c}" cy="${c}" r="${rI}" fill="none" stroke="${mcol}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${cI.toFixed(1)}" stroke-dashoffset="${offI.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/>
+    </svg>`;
+  }
+
+  /* Apple-style activity ring (rounded-cap SVG arc) */
+  function ringSVG(pct, o) {
+    o = o || {};
+    const size = o.size || 68, sw = o.sw || 7, r = (size - sw) / 2, c = 2 * Math.PI * r;
+    const p = Math.max(0, Math.min(100, pct));
+    const off = c * (1 - p / 100);
+    const col = o.color || "var(--green)";
+    const cx = size / 2;
+    return `<div class="ringwrap" style="width:${size}px;height:${size}px">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
+        <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
+          stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>
+      </svg>
+      <div class="ringctr">${o.center || ""}</div>
+    </div>`;
+  }
 
   /* ---------- state ---------- */
   let state = load();
@@ -44,7 +85,22 @@
   const todayKey = () => fmt(new Date());
   const parseKey = k => { const [y, m, dd] = k.split("-").map(Number); return new Date(y, m - 1, dd); };
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const MONTHS_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  /* ---------- theme ---------- */
+  function applyTheme() {
+    const pref = localStorage.getItem("gymdiary_theme") || "auto";
+    const mode = pref === "auto"
+      ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+      : pref;
+    document.documentElement.setAttribute("data-theme", mode);
+    const tc = mode === "light" ? "#f2f2f7" : "#000000";
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute("content", tc);
+  }
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if ((localStorage.getItem("gymdiary_theme") || "auto") === "auto") applyTheme();
+  });
 
   /* ---------- log helpers ---------- */
   function getLog(date) {
@@ -127,11 +183,14 @@
      RENDER
      =========================================================== */
   let tab = "today";
-  let selectedDate = todayKey();   // Today tab can show/edit any date
+  let selectedDate = todayKey();   // Today + Macros operate on this date
+  let calMonth = (function () { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
   function render() {
     const now = new Date();
     $("#todayDate").textContent = `${DOW[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
     $("#streakCount").textContent = computeStreak();
+    const resolved = document.documentElement.getAttribute("data-theme");
+    const tt = $("#themeToggle"); if (tt) tt.innerHTML = svg(resolved === "dark" ? ICONS.sun : ICONS.moon);
     document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
     const v = $("#view");
     if (tab === "today") v.innerHTML = viewToday();
@@ -151,16 +210,9 @@
     if (diff > 1) return diff + " days ago";
     return "Upcoming";
   }
-  function viewToday() {
-    const date = selectedDate;
-    const l = getLog(date);
-    const day = PLAN.schedule[l.dayKey];
-    const st = dayStatus(date);
-    const isToday = date === todayKey();
-    const dt = parseKey(date);
-
-    // date navigator
-    let html = `<div class="datebar${isToday ? "" : " editing"}">
+  function dateBarHTML() {
+    const date = selectedDate, isToday = date === todayKey(), dt = parseKey(date);
+    return `<div class="datebar${isToday ? "" : " editing"}">
       <button class="datenav" aria-label="Previous day" onclick="GD.shiftDate(-1)">${svg(ICONS.chevL)}</button>
       <label class="datefield">
         <span class="datefield-main">${DOW[dt.getDay()]}, ${dt.getDate()} ${MONTHS[dt.getMonth()]}</span>
@@ -168,7 +220,16 @@
         <input type="date" value="${date}" max="${todayKey()}" onchange="GD.setDate(this.value)">
       </label>
       <button class="datenav" aria-label="Next day"${isToday ? " disabled" : ""} onclick="GD.shiftDate(1)">${svg(ICONS.chevR)}</button>
+      ${isToday ? "" : `<button class="today-jump" onclick="GD.gotoToday()">Today</button>`}
     </div>`;
+  }
+  function viewToday() {
+    const date = selectedDate;
+    const l = getLog(date);
+    const day = PLAN.schedule[l.dayKey];
+    const st = dayStatus(date);
+
+    let html = dateBarHTML();
 
     // workout-split select
     const opts = Object.keys(PLAN.schedule).map(dk => {
@@ -220,7 +281,7 @@
           <div class="hero-day">${day.label} · ${shortFocus(day.focus)}</div>
           <h1>${focusTitle}</h1>
         </div>
-        <div class="hero-ring" style="--p:${pct}"><span><b>${pct}</b><i>%</i></span></div>
+        ${ringSVG(pct, { size: 66, sw: 7, color: "var(--cat)", center: `<b>${pct}</b><i>%</i>` })}
       </div>
       <div class="hero-pills">${pills.map(p => `<span class="hpill">${p}</span>`).join("")}<span class="hpill hpill-stat">${st.done}/${st.total} done</span></div>
     </div>`;
@@ -285,9 +346,11 @@
   const STEPS = { calories: 50, protein: 5, carbs: 10, fats: 5, water: 0.25 };
   const NAMES = { calories: "Calories", protein: "Protein", carbs: "Carbs", fats: "Fats", water: "Water" };
   function viewMacros() {
-    const date = todayKey();
+    const date = selectedDate;
+    const isToday = date === todayKey();
     const n = getLog(date).nutrition;
-    let html = `<div class="section-h"><h2>Today's intake</h2><span class="meta">tap +/− or type</span></div>`;
+    let html = dateBarHTML();
+    html += `<div class="section-h"><h2>${isToday ? "Today's intake" : "Intake"}</h2><span class="meta">auto-saved · tap +/− or type</span></div>`;
     Object.keys(TARGETS).forEach(k => { html += macroCard(k, +n[k] || 0); });
 
     // summary ring
@@ -295,7 +358,7 @@
     const pctMet = (metCount / 5) * 100;
     const blurb = metCount === 5 ? "Perfect day — every macro on point." : "Close your ring by hitting all five targets.";
     html += `<div class="card ringcard">
-      <div class="ring" style="--p:${pctMet}"><div class="ring-in"><b>${metCount}</b><span>of 5</span></div></div>
+      ${ringSVG(pctMet, { size: 76, sw: 8, color: metCount === 5 ? "var(--green)" : "var(--blue)", center: `<b>${metCount}</b><span>of 5</span>` })}
       <div class="ringcard-txt"><div class="ringcard-t">Targets met today</div><div class="muted small">${blurb}</div></div>
     </div>`;
     html += `<p class="muted small" style="line-height:1.5;margin:4px 6px 20px">
@@ -336,55 +399,83 @@
   function round(x) { return Math.round(x * 100) / 100; }
 
   /* ---------- HISTORY ---------- */
+  function macrosMet(n) {
+    return Object.keys(TARGETS).filter(k => macroEval(k, +(n && n[k]) || 0).cls === "good").length;
+  }
   function viewHistory() {
-    // stats
+    const year = calMonth.getFullYear(), month = calMonth.getMonth();
+    const now = new Date();
+    const isCurMonth = year === now.getFullYear() && month === now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startOffset = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first
+
+    // monthly stats
+    let trained = 0, macroDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = fmt(new Date(year, month, d));
+      if (parseKey(date) > parseKey(todayKey())) break;
+      const s = dayStatus(date).status;
+      if (s === "done" || s === "part") trained++;
+      const log = state.logs[date];
+      if (log && log.nutrition && +log.nutrition.calories > 0) macroDays++;
+    }
     const streak = computeStreak();
-    let week = 0; const cur = new Date();
-    for (let i = 0; i < 7; i++) { const s = dayStatus(fmt(cur)).status; if (s === "done" || s === "part") week++; cur.setDate(cur.getDate() - 1); }
-    const total = Object.keys(state.logs).filter(k => { const s = dayStatus(k).status; return s === "done" || s === "part"; }).length;
 
     let html = `<div class="statgrid">
-      <div class="stat"><div class="n">${streak}<span class="stat-flame">${svg(ICONS.flame, true)}</span></div><div class="l">Streak</div></div>
-      <div class="stat"><div class="n">${week}<span class="dim">/6</span></div><div class="l">This week</div></div>
-      <div class="stat"><div class="n">${total}</div><div class="l">Sessions</div></div>
+      <div class="stat"><div class="n">${streak}<span class="stat-flame">${svg(ICONS.flame, true)}</span></div><div class="l">Day streak</div></div>
+      <div class="stat"><div class="n">${trained}</div><div class="l">Trained</div></div>
+      <div class="stat"><div class="n">${macroDays}</div><div class="l">Macros logged</div></div>
     </div>`;
 
-    html += `<div class="section-h"><h2>Last 14 days</h2><span class="meta">tap a day to log / edit</span></div>`;
-    const rows = [];
-    const d = new Date();
-    for (let i = 0; i < 14; i++) {
-      const k = fmt(d); rows.push(hrow(k)); d.setDate(d.getDate() - 1);
-    }
-    html += rows.join("") || `<div class="empty">No history yet.</div>`;
-    return html;
-  }
-  function hrow(date) {
-    const st = dayStatus(date);
-    const dt = parseKey(date);
-    const l = state.logs[date];
-    const badge = { done: ["b-done", "Done"], part: ["b-part", "Partial"], rest: ["b-rest", "Rest"], miss: ["b-miss", "Missed"], none: ["b-rest", "—"] }[st.status];
-    const pct = Math.round(st.ratio * 100);
-    const isToday = date === todayKey();
-    const kcal = l && l.nutrition && l.nutrition.calories ? `${l.nutrition.calories} kcal · ` : "";
-    return `<div class="hrow" onclick="GD.edit('${date}')">
-      <div class="hdate"><div class="d">${dt.getDate()}</div><div class="m">${DOW[dt.getDay()]}</div></div>
-      <div class="hmid">
-        <div class="t">${st.day.label} · ${shortFocus(st.day.focus)}${isToday ? " · Today" : ""}</div>
-        <div class="s">${kcal}${st.day.rest ? "Recovery" : st.done + "/" + st.total + " exercises"}</div>
-        ${st.day.rest ? "" : `<div class="minibar"><i style="width:${pct}%"></i></div>`}
-      </div>
-      <div class="hbadge ${badge[0]}">${badge[1]}</div>
-      <span class="hedit">${svg(ICONS.chevR)}</span>
+    // month navigator
+    html += `<div class="month-nav">
+      <button aria-label="Previous month" onclick="GD.shiftMonth(-1)">${svg(ICONS.chevL)}</button>
+      <div class="month-title">${MONTHS_FULL[month]} ${year}</div>
+      <button aria-label="Next month"${isCurMonth ? " disabled" : ""} onclick="GD.shiftMonth(1)">${svg(ICONS.chevR)}</button>
     </div>`;
+
+    // calendar grid (Monday-first)
+    html += `<div class="cal"><div class="cal-head">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<span>${x}</span>`).join("")}</div><div class="cal-grid">`;
+    for (let i = 0; i < startOffset; i++) html += `<span class="cal-day blank"></span>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = fmt(new Date(year, month, d));
+      const isToday = date === todayKey();
+      const future = parseKey(date) > parseKey(todayKey());
+      if (future) {
+        html += `<span class="cal-day st-future"><span class="cal-rings">${dayRings(0, 0, { wcol: "var(--track)", mcol: "var(--track)" })}</span><span class="cal-num">${d}</span></span>`;
+        continue;
+      }
+      const st = dayStatus(date), day = st.day;
+      const log = state.logs[date], n = (log && log.nutrition) || {};
+      const wpct = day.rest ? (st.status === "rest" ? 100 : 0) : Math.round(st.ratio * 100);
+      const mpct = Math.round(macrosMet(n) / 5 * 100);
+      const wcol = day.rest ? "var(--label3)" : "var(--green)";
+      html += `<button class="cal-day${isToday ? " is-today" : ""}" onclick="GD.dayDetail('${date}')">
+        <span class="cal-rings">${dayRings(wpct, mpct, { wcol })}</span>
+        <span class="cal-num">${d}</span>
+      </button>`;
+    }
+    html += `</div>
+      <div class="cal-legend">
+        <span><i class="lg-ring lg-ring-w"></i>Workout</span>
+        <span><i class="lg-ring lg-ring-m"></i>Macros</span>
+        <span class="cal-legend-note">rings fill with % completed</span>
+      </div></div>`;
+
+    html += `<p class="muted small" style="text-align:center;margin:14px 6px 8px;line-height:1.5">Tap any day for its workout % and macros %.</p>`;
+    return html;
   }
 
   /* ---------- PLAN ---------- */
   function viewPlan() {
     const P = PLAN;
-    let html = `<div class="hero" style="background:linear-gradient(135deg,#1c2a1f,#172033)"><div class="ring"></div>
-      <h1>${P.meta.plan_type}</h1>
-      <div class="focus">${P.meta.goal}</div>
-      <div class="sub">${P.meta.commitment}</div></div>`;
+    let html = `<div class="hero" style="--cat:var(--purple)">
+      <div class="hero-top"><div class="hero-l">
+        <div class="hero-day">The Plan</div>
+        <h1>${P.meta.plan_type}</h1>
+      </div></div>
+      <p class="hero-goal">${P.meta.goal}</p>
+      <div class="hero-pills"><span class="hpill">${P.meta.commitment}</span></div></div>`;
 
     // posture
     html += acc(svg(ICONS.posture) + "Daily Posture & Neck", `<p>${P.posture.when}</p>` +
@@ -414,8 +505,15 @@
     html += acc(svg(ICONS.warn) + "Critical warnings",
       P.warnings.map(w => `<div class="li"><b>${w.topic}</b><br>${w.text}</div>`).join(""));
 
+    // appearance
+    const theme = localStorage.getItem("gymdiary_theme") || "auto";
+    html += `<div class="section-h"><h2>Appearance</h2></div>
+      <div class="segmented">${["auto", "light", "dark"].map(o =>
+        `<button class="seg${theme === o ? " on" : ""}" onclick="GD.setTheme('${o}')">${o[0].toUpperCase() + o.slice(1)}</button>`).join("")}</div>`;
+
     // data
-    html += `<div class="section-h"><h2>Your data</h2></div>
+    html += `<div class="section-h"><h2>Your data</h2></div>`;
+    html += `
       <p class="muted small" style="margin:0 6px 10px;line-height:1.5">Everything is saved on this device. Export a JSON backup to keep it safe or commit it to your GitHub repo.</p>
       <div class="btnrow">
         <button class="btn" onclick="GD.exportData()">${svg(ICONS.download)} Export backup</button>
@@ -434,7 +532,15 @@
      ACTIONS (exposed as window.GD)
      =========================================================== */
   const GD = {
-    go(t) { tab = t; if (t === "today") selectedDate = todayKey(); render(); toTop(); },
+    go(t) { tab = t; render(); toTop(); },
+    gotoToday() { selectedDate = todayKey(); render(); toTop(); },
+    shiftMonth(delta) {
+      const d = new Date(calMonth); d.setMonth(d.getMonth() + delta);
+      const now = new Date();
+      if (d.getFullYear() > now.getFullYear() || (d.getFullYear() === now.getFullYear() && d.getMonth() > now.getMonth())) return;
+      calMonth = d; render();
+    },
+    setTheme(pref) { localStorage.setItem("gymdiary_theme", pref); applyTheme(); render(); },
     pickDay(dk) { getLog(selectedDate).dayKey = dk; save(); render(); /* keep scroll */ },
     shiftDate(delta) {
       const d = parseKey(selectedDate); d.setDate(d.getDate() + delta);
@@ -461,12 +567,12 @@
       save(); render(); // scroll preserved
     },
     macro(k, dir) {
-      const n = getLog(todayKey()).nutrition;
+      const n = getLog(selectedDate).nutrition;
       n[k] = round(Math.max(0, (+n[k] || 0) + dir * STEPS[k]));
       save(); render();
     },
     macroSet(k, val) {
-      const n = getLog(todayKey()).nutrition;
+      const n = getLog(selectedDate).nutrition;
       n[k] = Math.max(0, +val || 0);
       save(); render();
     },
@@ -487,10 +593,42 @@
         (steps ? `<ol>${steps.map(s => `<li>${s}</li>`).join("")}</ol>`
                : `<p class="muted">No step-by-step guide stored for this one yet. ${gif ? "" : "Add a GIF link from the card and search the movement name on YouTube."}</p>`) +
         `<button class="closebtn" onclick="GD.closeModal()">Close</button>`;
-      let m = $("#modal");
-      if (!m) { m = document.createElement("div"); m.id = "modal"; m.className = "modal"; m.addEventListener("click", e => { if (e.target === m) GD.closeModal(); }); document.body.appendChild(m); }
-      m.innerHTML = `<div class="sheet">${body}</div>`;
-      requestAnimationFrame(() => m.classList.add("show"));
+      showSheet(body);
+    },
+    dayDetail(date) {
+      const st = dayStatus(date), day = st.day;
+      const dt = parseKey(date);
+      const log = state.logs[date], n = (log && log.nutrition) || {};
+      const isToday = date === todayKey();
+      const wpct = day.rest ? 0 : Math.round(st.ratio * 100);
+      const met = macrosMet(n), mpct = Math.round(met / 5 * 100);
+      const cat = catColorFor(day);
+      const macroRows = Object.keys(TARGETS).map(k => {
+        const t = TARGETS[k], val = +n[k] || 0, e = macroEval(k, val);
+        return `<div class="dd-macro"><span class="dd-mname">${NAMES[k]}</span>
+          <div class="bar"><i class="${e.fill}" style="width:${e.pct}%"></i></div>
+          <span class="dd-mval${val > 0 ? "" : " dim"}">${round(val)}/${t.min}${t.unit === "kcal" ? "" : t.unit}</span></div>`;
+      }).join("");
+      const body = `<div class="grab"></div>
+        <h3>${DOW[dt.getDay()]}, ${dt.getDate()} ${MONTHS_FULL[dt.getMonth()]}</h3>
+        <div class="dd-sub">${day.label} · ${day.rest ? "Rest day" : day.focus}</div>
+        <div class="dd-rings">
+          <div class="dd-ring">${ringSVG(wpct, { size: 92, sw: 9, color: cat, center: `<b>${wpct}</b><i>%</i>` })}<div class="dd-rlabel">Workout<span>${day.rest ? "Rest" : st.done + "/" + st.total + " done"}</span></div></div>
+          <div class="dd-ring">${ringSVG(mpct, { size: 92, sw: 9, color: "var(--green)", center: `<b>${mpct}</b><i>%</i>` })}<div class="dd-rlabel">Macros<span>${met}/5 targets</span></div></div>
+        </div>
+        <div class="dd-macros">${macroRows}</div>
+        <div class="btnrow">
+          <button class="btn" onclick="GD.editWorkout('${date}')">${svg(ICONS.today)} ${isToday ? "Open" : "Edit"} workout</button>
+          <button class="btn" onclick="GD.editMacros('${date}')">${svg(ICONS.nutrition)} Log macros</button>
+        </div>
+        <button class="closebtn" onclick="GD.closeModal()">Close</button>`;
+      showSheet(body);
+    },
+    editWorkout(date) { GD.closeModal(); selectedDate = date; tab = "today"; render(); toTop(); },
+    editMacros(date) { GD.closeModal(); selectedDate = date; tab = "macros"; render(); toTop(); },
+    toggleTheme() {
+      const resolved = document.documentElement.getAttribute("data-theme");
+      GD.setTheme(resolved === "light" ? "dark" : "light");
     },
     closeModal() { const m = $("#modal"); if (m) m.classList.remove("show"); },
     exportData() {
@@ -521,6 +659,14 @@
   };
   window.GD = GD;
 
+  /* ---------- bottom sheet ---------- */
+  function showSheet(inner) {
+    let m = $("#modal");
+    if (!m) { m = document.createElement("div"); m.id = "modal"; m.className = "modal"; m.addEventListener("click", e => { if (e.target === m) GD.closeModal(); }); document.body.appendChild(m); }
+    m.innerHTML = `<div class="sheet">${inner}</div>`;
+    requestAnimationFrame(() => m.classList.add("show"));
+  }
+
   /* ---------- toast ---------- */
   let toastTimer;
   function toast(msg) {
@@ -534,5 +680,6 @@
   document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => GD.go(b.dataset.tab)));
   document.addEventListener("keydown", e => { if (e.key === "Escape") GD.closeModal(); });
 
+  applyTheme();
   render();
 })();

@@ -3,8 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0b0d12" />
+  <meta name="theme-color" content="#000000" />
   <title>Gym Diary</title>
+  <script>
+    /* apply saved theme before first paint to avoid a flash */
+    (function () {
+      try {
+        var p = localStorage.getItem("gymdiary_theme") || "auto";
+        var m = p === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : p;
+        document.documentElement.setAttribute("data-theme", m);
+      } catch (e) {}
+    })();
+  </script>
 
   <!-- PWA / iOS home-screen -->
   <link rel="manifest" href="manifest.json" />
@@ -31,11 +41,14 @@
           <div class="brand-sub" id="todayDate"></div>
         </div>
       </div>
-      <div class="streak-chip" id="streakChip" title="Current streak">
-        <svg class="flame" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M12.8 2c.4 2.4 1.8 3.5 3 5 1.2 1.6 2.2 3.2 2.2 5.7a6 6 0 1 1-12 0c0-1.5.5-2.7 1.4-3.7-.1 1 .5 2 1.4 2.6-.4-1.9.2-4 1.4-5.3 1-1.1.8-2.7.5-4.1 1 .5 1.9 1.5 2.4 2.9.5-1.1.4-2.3-.7-3.1z"/>
-        </svg>
-        <span id="streakCount">0</span>
+      <div class="topbar-right">
+        <button class="icon-btn" id="themeToggle" aria-label="Toggle light or dark mode" onclick="GD.toggleTheme()"></button>
+        <div class="streak-chip" id="streakChip" title="Current streak">
+          <svg class="flame" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12.8 2c.4 2.4 1.8 3.5 3 5 1.2 1.6 2.2 3.2 2.2 5.7a6 6 0 1 1-12 0c0-1.5.5-2.7 1.4-3.7-.1 1 .5 2 1.4 2.6-.4-1.9.2-4 1.4-5.3 1-1.1.8-2.7.5-4.1 1 .5 1.9 1.5 2.4 2.9.5-1.1.4-2.3-.7-3.1z"/>
+          </svg>
+          <span id="streakCount">0</span>
+        </div>
       </div>
     </div>
   </header>
