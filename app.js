@@ -76,8 +76,19 @@
     try { return JSON.parse(localStorage.getItem(KEY)) || blank(); }
     catch (e) { return blank(); }
   }
-  function blank() { return { logs: {}, customGifs: {} }; }
+  function blank() { return { logs: {}, customGifs: {}, targets: {} }; }
   function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+  if (!state.targets) state.targets = {};
+
+  /* ---------- targets (editable, override the defaults in data.js) ---------- */
+  const DEFAULT_TARGETS = window.TARGETS;
+  function loadTargets() {
+    const saved = state.targets || {};
+    const out = {};
+    Object.keys(DEFAULT_TARGETS).forEach(k => { out[k] = Object.assign({}, DEFAULT_TARGETS[k], saved[k] || {}); });
+    return out;
+  }
+  let TARGETS = loadTargets();
 
   /* ---------- dates ---------- */
   const pad = n => String(n).padStart(2, "0");
@@ -402,6 +413,29 @@
   function macrosMet(n) {
     return Object.keys(TARGETS).filter(k => macroEval(k, +(n && n[k]) || 0).cls === "good").length;
   }
+  function monthlyAverages(year, month) {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const keys = Object.keys(TARGETS), sums = {}; keys.forEach(k => sums[k] = 0);
+    let count = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = fmt(new Date(year, month, d));
+      if (parseKey(date) > parseKey(todayKey())) break;
+      const log = state.logs[date];
+      if (log && log.nutrition && +log.nutrition.calories > 0) {
+        count++; keys.forEach(k => sums[k] += +log.nutrition[k] || 0);
+      }
+    }
+    const macros = {};
+    keys.forEach(k => {
+      const t = TARGETS[k], avg = count ? sums[k] / count : 0, goal = (t.min + t.max) / 2;
+      const coverage = goal ? Math.round(avg / goal * 100) : 0;
+      let cls;
+      if (t.mode === "atLeast") cls = coverage >= 90 ? "good" : "warn";
+      else cls = coverage > 110 ? "bad" : (coverage >= 90 ? "good" : "warn");
+      macros[k] = { avg: k === "water" ? round(avg) : Math.round(avg), coverage, cls };
+    });
+    return { count, macros };
+  }
   function viewHistory() {
     const year = calMonth.getFullYear(), month = calMonth.getMonth();
     const now = new Date();
@@ -463,6 +497,23 @@
       </div></div>`;
 
     html += `<p class="muted small" style="text-align:center;margin:14px 6px 8px;line-height:1.5">Tap any day for its workout % and macros %.</p>`;
+
+    // monthly averages vs targets
+    const avg = monthlyAverages(year, month);
+    if (avg.count > 0) {
+      html += `<div class="section-h"><h2>Monthly averages</h2><span class="meta">${avg.count} logged ${avg.count === 1 ? "day" : "days"}</span></div>`;
+      html += `<div class="card">`;
+      Object.keys(TARGETS).forEach(k => {
+        const t = TARGETS[k], a = avg.macros[k];
+        const fill = a.cls === "good" ? "f-good" : a.cls === "bad" ? "f-bad" : "f-warn";
+        html += `<div class="avg-row">
+          <div class="avg-top"><span class="avg-name">${NAMES[k]}</span><span class="avg-pct s-${a.cls}">${a.coverage}% of goal</span></div>
+          <div class="bar"><i class="${fill}" style="width:${Math.min(a.coverage, 100)}%"></i></div>
+          <div class="avg-foot">avg ${a.avg}${t.unit === "kcal" ? " kcal" : t.unit} · target ${t.min}–${t.max}${t.unit === "kcal" ? " kcal" : t.unit}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
     return html;
   }
 
@@ -476,6 +527,25 @@
       </div></div>
       <p class="hero-goal">${P.meta.goal}</p>
       <div class="hero-pills"><span class="hpill">${P.meta.commitment}</span></div></div>`;
+
+    // editable daily targets
+    html += `<div class="section-h"><h2>Daily targets</h2><span class="meta">tap a value to edit</span></div>`;
+    html += `<div class="card tgt-card">`;
+    Object.keys(TARGETS).forEach(k => {
+      const t = TARGETS[k];
+      html += `<div class="tgt-row">
+        <span class="tgt-name">${NAMES[k]}</span>
+        <span class="tgt-inputs">
+          <input type="number" inputmode="decimal" value="${t.min}" aria-label="${NAMES[k]} minimum" onchange="GD.setTarget('${k}','min',this.value)">
+          <span class="tgt-dash">–</span>
+          <input type="number" inputmode="decimal" value="${t.max}" aria-label="${NAMES[k]} maximum" onchange="GD.setTarget('${k}','max',this.value)">
+          <span class="tgt-unit">${t.unit}</span>
+        </span>
+      </div>`;
+    });
+    html += `</div>`;
+    html += `<p class="muted small" style="margin:-2px 6px 12px;line-height:1.5">These drive your macro rings and the 4/5 "targets met" score. Set them to your own numbers — they update everywhere.</p>`;
+    html += `<div class="btnrow"><button class="btn" onclick="GD.resetTargets()">Reset targets to default</button></div>`;
 
     // posture
     html += acc(svg(ICONS.posture) + "Daily Posture & Neck", `<p>${P.posture.when}</p>` +
@@ -541,6 +611,22 @@
       calMonth = d; render();
     },
     setTheme(pref) { localStorage.setItem("gymdiary_theme", pref); applyTheme(); render(); },
+    setTarget(k, field, val) {
+      val = parseFloat(val);
+      if (isNaN(val) || val < 0) { render(); return; }
+      if (!state.targets[k]) state.targets[k] = {};
+      state.targets[k][field] = val;
+      // keep min <= max sane
+      const cur = Object.assign({}, DEFAULT_TARGETS[k], state.targets[k]);
+      if (field === "min" && val > cur.max) state.targets[k].max = val;
+      if (field === "max" && val < cur.min) state.targets[k].min = val;
+      TARGETS = loadTargets(); save(); render();
+    },
+    resetTargets() {
+      if (confirm("Reset all daily targets back to the recommended defaults?")) {
+        state.targets = {}; TARGETS = loadTargets(); save(); render();
+      }
+    },
     pickDay(dk) { getLog(selectedDate).dayKey = dk; save(); render(); /* keep scroll */ },
     shiftDate(delta) {
       const d = parseKey(selectedDate); d.setDate(d.getDate() + delta);
