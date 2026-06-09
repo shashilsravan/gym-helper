@@ -5,6 +5,7 @@ const CORE = [
   "index.html",
   "styles.css",
   "data.js",
+  "templates.js",
   "exercise-meta.js",
   "app.js",
   "manifest.json",
