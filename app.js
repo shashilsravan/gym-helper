@@ -333,8 +333,18 @@
     else if (tab === "macros") v.innerHTML = viewMacros();
     else if (tab === "history") v.innerHTML = viewHistory();
     else v.innerHTML = viewPlan();
+    v.insertAdjacentHTML("beforeend", creditHTML());
     // NOTE: no scroll reset here — in-place updates (logging a set) must keep
     // the user's scroll position. Tab/date changes scroll to top explicitly.
+  }
+  function creditHTML() {
+    return `<footer class="credit">
+      <span class="credit-inner">
+        Forged with
+        <span class="credit-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6M7 7.5v9M17 7.5v9M20 9v6M7.5 12h9"/></svg></span>
+        by <a class="credit-link" href="https://sravancodes.in" target="_blank" rel="noopener noreferrer">Sravan</a>
+      </span>
+    </footer>`;
   }
   function toTop() { window.scrollTo(0, 0); }
 
