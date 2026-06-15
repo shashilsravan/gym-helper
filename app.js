@@ -188,6 +188,18 @@
     if (it.sets) return setsDone(p, id) >= it.sets;
     return !!(p.done && p.done[id]);
   }
+  function parseRepRange(reps) {
+    if (!reps) return 1;
+    const s = String(reps).trim();
+    // time-based: "40s", "30s / side", "25 min" → count as 1 unit per set
+    if (/\d+\s*(s|sec|min)\b/i.test(s)) return 1;
+    // range "8–10" or "8-10" → lower bound
+    const range = s.match(/^(\d+)\s*[–\-]\s*\d+/);
+    if (range) return +range[1];
+    // first number: handles "10", "10/leg", "20 steps"
+    const n = s.match(/(\d+)/);
+    return n ? +n[1] : 1;
+  }
   function currentItem(id) {
     const day = activeSched()[getLog(selectedDate).dayKey];
     const [si, ii] = id.split("-").map(Number);
@@ -254,18 +266,30 @@
     const p = (l && l.progress && l.progress[dk]) || { sets: {}, done: {} };
     const items = trackableItems(day);
     let done = 0, mainDone = 0, mainTotal = 0;
+    let repsDone = 0, repsTotal = 0;
     items.forEach(e => {
-      const d = itemDone(p, e);
-      if (d) done++;
-      if (e.sec.kind === "main") { mainTotal++; if (d) mainDone++; }
+      const { id, it, sec } = e;
+      const fullyDone = itemDone(p, e);
+      if (fullyDone) done++;
+      if (it.sets) {
+        const planReps = parseRepRange(it.reps);
+        repsTotal += it.sets * planReps;
+        const L = p.loads && p.loads[id];
+        if (L) L.forEach(s => { if (s && s.done) repsDone += (+s.reps > 0 ? +s.reps : planReps); });
+        if (sec.kind === "main") { mainTotal++; if (fullyDone) mainDone++; }
+      } else {
+        repsTotal += 1;
+        if (p.done && p.done[id]) repsDone += 1;
+        if (sec.kind === "main") { mainTotal++; if (fullyDone) mainDone++; }
+      }
     });
-    const ratio = items.length ? done / items.length : 0;
+    const ratio = repsTotal ? repsDone / repsTotal : 0;
     let status;
-    if (day.rest) status = done > 0 ? "rest" : (isPast(date) ? "none" : "none");
+    if (day.rest) status = repsDone > 0 ? "rest" : "none";
     else if (mainDone >= 1 && ratio >= 0.8) status = "done";
-    else if (done > 0) status = "part";
+    else if (repsDone > 0) status = "part";
     else status = isPast(date) ? "miss" : "none";
-    return { dk, day, status, done, total: items.length, ratio, mainDone, mainTotal };
+    return { dk, day, status, done, total: items.length, ratio, mainDone, mainTotal, repsDone, repsTotal };
   }
   function isPast(date) { return parseKey(date) < parseKey(todayKey()); }
 
@@ -463,7 +487,7 @@
         </div>
         ${ringSVG(pct, { size: 66, sw: 7, color: "var(--cat)", center: `<b>${pct}</b><i>%</i>` })}
       </div>
-      <div class="hero-pills">${pills.map(p => `<span class="hpill">${p}</span>`).join("")}<span class="hpill hpill-stat">${st.done}/${st.total} done</span></div>
+      <div class="hero-pills">${pills.map(p => `<span class="hpill">${p}</span>`).join("")}<span class="hpill hpill-stat">${st.repsDone}/${st.repsTotal} reps</span></div>
     </div>`;
   }
 
