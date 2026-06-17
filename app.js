@@ -38,7 +38,9 @@
     timer: `<circle cx="12" cy="13" r="8"/><path d="M12 13V9M9 2h6"/>`,
     download2: `<path d="M12 3.5v11M7.5 10.5l4.5 4 4.5-4M5 20h14"/>`,
     bulk: `<path d="M4 20h16M7 20v-7M12 20V8M17 20v-4"/><path d="M14.5 6.5 17 4l2.5 2.5"/>`,
-    heart: `<path d="M12 20.4S3.6 15.7 3.6 9.9A4.3 4.3 0 0 1 12 8a4.3 4.3 0 0 1 8.4 1.9c0 5.8-8.4 10.5-8.4 10.5z"/>`
+    heart: `<path d="M12 20.4S3.6 15.7 3.6 9.9A4.3 4.3 0 0 1 12 8a4.3 4.3 0 0 1 8.4 1.9c0 5.8-8.4 10.5-8.4 10.5z"/>`,
+    camera: `<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l2-3h6l2 3h3a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3"/>`,
+    spark: `<path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.3L12 17l-6.2 4.2 2.4-7.3L2 9.4h7.6z"/>`
   };
 
   /* Apple-Fitness double ring for a calendar day (outer = workout, inner = macros) */
@@ -266,32 +268,66 @@
     const p = (l && l.progress && l.progress[dk]) || { sets: {}, done: {} };
     const items = trackableItems(day);
     let done = 0, mainDone = 0, mainTotal = 0;
-    let repsDone = 0, repsTotal = 0;
+    let setsD = 0, setsT = 0;
     items.forEach(e => {
       const { id, it, sec } = e;
       const fullyDone = itemDone(p, e);
       if (fullyDone) done++;
       if (it.sets) {
-        const planReps = parseRepRange(it.reps);
-        repsTotal += it.sets * planReps;
-        const L = p.loads && p.loads[id];
-        if (L) L.forEach(s => { if (s && s.done) repsDone += (+s.reps > 0 ? +s.reps : planReps); });
+        setsT += it.sets;
+        setsD += setsDone(p, id);
         if (sec.kind === "main") { mainTotal++; if (fullyDone) mainDone++; }
       } else {
-        repsTotal += 1;
-        if (p.done && p.done[id]) repsDone += 1;
+        setsT += 1;
+        if (p.done && p.done[id]) setsD += 1;
         if (sec.kind === "main") { mainTotal++; if (fullyDone) mainDone++; }
       }
     });
-    const ratio = repsTotal ? repsDone / repsTotal : 0;
+    const ratio = setsT ? setsD / setsT : 0;
     let status;
-    if (day.rest) status = repsDone > 0 ? "rest" : "none";
+    if (day.rest) status = setsD > 0 ? "rest" : "none";
     else if (mainDone >= 1 && ratio >= 0.8) status = "done";
-    else if (repsDone > 0) status = "part";
+    else if (setsD > 0) status = "part";
     else status = isPast(date) ? "miss" : "none";
-    return { dk, day, status, done, total: items.length, ratio, mainDone, mainTotal, repsDone, repsTotal };
+    return { dk, day, status, done, total: items.length, ratio, mainDone, mainTotal, setsD, setsT };
   }
   function isPast(date) { return parseKey(date) < parseKey(todayKey()); }
+
+  /* ---------- OpenAI key (stored separately, btoa-encoded so it's not plaintext in localStorage) ---------- */
+  function getOAI() {
+    const raw = localStorage.getItem("gymdiary_oai");
+    if (!raw) return "";
+    try { return atob(raw); } catch { return ""; }
+  }
+  async function callOpenAI(prompt, imageB64) {
+    const key = getOAI();
+    if (!key) throw new Error("no_key");
+    const model = imageB64 ? "gpt-4o" : "gpt-4o-mini";
+    const userContent = imageB64
+      ? [{ type: "text", text: prompt || "What did I eat? Estimate macros." },
+         { type: "image_url", image_url: { url: "data:image/jpeg;base64," + imageB64, detail: "low" } }]
+      : (prompt || "");
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify({
+        model, max_tokens: 120, temperature: 0,
+        messages: [
+          { role: "system", content: 'You are a nutrition expert. Estimate macros for the described or pictured food. Respond ONLY with valid JSON: {"calories":number,"protein":number,"carbs":number,"fats":number,"water":number,"description":"brief food name"}. Realistic serving-size estimates. No markdown, no prose.' },
+          { role: "user", content: userContent }
+        ]
+      })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || "API error " + res.status);
+    }
+    const data = await res.json();
+    const txt = data.choices[0].message.content.trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Unexpected response from OpenAI");
+    return JSON.parse(m[0]);
+  }
 
   /* ---------- streak ---------- */
   function computeStreak() {
@@ -487,7 +523,7 @@
         </div>
         ${ringSVG(pct, { size: 66, sw: 7, color: "var(--cat)", center: `<b>${pct}</b><i>%</i>` })}
       </div>
-      <div class="hero-pills">${pills.map(p => `<span class="hpill">${p}</span>`).join("")}<span class="hpill hpill-stat">${st.repsDone}/${st.repsTotal} reps</span></div>
+      <div class="hero-pills">${pills.map(p => `<span class="hpill">${p}</span>`).join("")}<span class="hpill hpill-stat">${st.setsD}/${st.setsT} sets</span></div>
     </div>`;
   }
 
@@ -566,7 +602,25 @@
     const date = selectedDate;
     const isToday = date === todayKey();
     const n = getLog(date).nutrition;
+    const hasKey = !!getOAI();
     let html = dateBarHTML();
+
+    // AI food log card
+    html += `<div class="card ai-log-card">
+      <div class="ai-log-head">
+        <span class="ai-log-title">${svg(ICONS.spark, true)} AI Food Log</span>
+        <span class="muted small">snap or describe a meal</span>
+      </div>
+      ${hasKey ? `<div class="ai-log-row">
+        <input id="aiText" type="text" class="ai-input" placeholder="e.g. 2 eggs, toast, coffee with milk…" onkeydown="if(event.key==='Enter')GD.aiLog()">
+        <label class="ai-cam-btn" title="Take photo">
+          ${svg(ICONS.camera)}
+          <input type="file" accept="image/*" capture="environment" onchange="GD.aiLogFile(this)" style="display:none">
+        </label>
+        <button id="aiSendBtn" class="ai-send-btn" onclick="GD.aiLog()">${svg(ICONS.spark)}</button>
+      </div>` : `<p class="muted small ai-key-prompt">Add your OpenAI key in <button class="link-btn" onclick="GD.go('plan')">Plan → AI Assistant</button> to log meals by typing or photo.</p>`}
+    </div>`;
+
     html += `<div class="section-h"><h2>${isToday ? "Today's intake" : "Intake"}</h2><span class="meta">auto-saved · tap +/− or type</span></div>`;
     Object.keys(TARGETS).forEach(k => { html += macroCard(k, +n[k] || 0); });
 
@@ -828,6 +882,26 @@
       <div class="segmented">${["auto", "light", "dark"].map(o =>
         `<button class="seg${theme === o ? " on" : ""}" onclick="GD.setTheme('${o}')">${o[0].toUpperCase() + o.slice(1)}</button>`).join("")}</div>`;
 
+    // AI assistant
+    const hasKey = !!getOAI();
+    html += `<div class="section-h"><h2>AI Assistant</h2></div>
+    <div class="card ai-key-card">
+      <div class="ai-key-info">
+        <div class="ai-key-t">${svg(ICONS.spark, true)} OpenAI API Key</div>
+        <div class="muted small">Stored on this device only · never sent to any server except OpenAI</div>
+      </div>
+      <div class="ai-key-inp" style="margin-top:10px">
+        <input type="password" id="oaiKeyInp" class="ai-key-field" placeholder="sk-…" autocomplete="off" autocorrect="off" spellcheck="false"
+          value="${hasKey ? "sk-" + "•".repeat(24) : ""}"
+          onfocus="if(this.value.startsWith('sk-•'))this.value=''">
+        <button class="btn" onclick="GD.saveOAI(document.getElementById('oaiKeyInp').value)">Save</button>
+      </div>
+      ${hasKey
+        ? `<p class="muted small ai-key-status ok">Key saved — AI food logging is active in Macros tab.</p>`
+        : `<p class="muted small ai-key-status">Get your key at <span class="muted">platform.openai.com → API Keys</span>. Free tier works.</p>`}
+      ${hasKey ? `<button class="btn danger" style="margin-top:8px" onclick="GD.saveOAI('')">Remove key</button>` : ""}
+    </div>`;
+
     // data
     html += `<div class="section-h"><h2>Your data</h2></div>`;
     html += `
@@ -1088,6 +1162,73 @@
       if (confirm("Delete ALL workout & nutrition history on this device? This cannot be undone.")) {
         state = blank(); save(); render(); toast("All data cleared");
       }
+    },
+    saveOAI(v) {
+      const k = (v || "").trim();
+      if (k && !k.startsWith("sk-•")) localStorage.setItem("gymdiary_oai", btoa(k));
+      else if (!k) localStorage.removeItem("gymdiary_oai");
+      render();
+      toast(k && !k.startsWith("sk-•") ? "OpenAI key saved" : "Key removed");
+    },
+    async aiLog() {
+      const inp = $("#aiText");
+      const text = (inp && inp.value.trim()) || "";
+      if (!text) { toast("Type what you ate first"); return; }
+      const btn = $("#aiSendBtn");
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const res = await callOpenAI(text, null);
+        GD._showAIResult(res);
+      } catch(e) {
+        toast(e.message === "no_key" ? "Add OpenAI key in Plan → AI Assistant" : "Error: " + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = svg(ICONS.spark); }
+      }
+    },
+    async aiLogFile(fileInp) {
+      const file = fileInp.files[0]; if (!file) return;
+      const text = ($("#aiText") || {}).value || "";
+      toast("Analysing photo…");
+      try {
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = e => res(e.target.result.split(",")[1]);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        const result = await callOpenAI(text, b64);
+        GD._showAIResult(result);
+      } catch(e) {
+        toast(e.message === "no_key" ? "Add OpenAI key in Plan → AI Assistant" : "Error: " + e.message);
+      }
+      fileInp.value = "";
+    },
+    _showAIResult(r) {
+      const body = `<div class="grab"></div>
+        <h3>${r.description || "Estimated macros"}</h3>
+        <div class="ai-result-grid">
+          <div class="ai-r"><b>${Math.round(r.calories || 0)}</b><span>kcal</span></div>
+          <div class="ai-r"><b>${Math.round(r.protein || 0)}g</b><span>protein</span></div>
+          <div class="ai-r"><b>${Math.round(r.carbs || 0)}g</b><span>carbs</span></div>
+          <div class="ai-r"><b>${Math.round(r.fats || 0)}g</b><span>fats</span></div>
+        </div>
+        <p class="muted small" style="text-align:center;margin:6px 0 16px">Will be added to ${selectedDate === todayKey() ? "today's" : "this day's"} log.</p>
+        <div class="btnrow">
+          <button class="btn" onclick="GD.addAIMacros(${Math.round(r.calories||0)},${Math.round(r.protein||0)},${Math.round(r.carbs||0)},${Math.round(r.fats||0)},${+(+(r.water||0)).toFixed(2)})">Add to log</button>
+          <button class="btn" onclick="GD.closeModal()">Cancel</button>
+        </div>
+        <button class="closebtn" onclick="GD.closeModal()">Close</button>`;
+      showSheet(body);
+    },
+    addAIMacros(cal, pro, carbs, fat, water) {
+      const n = getLog(selectedDate).nutrition;
+      n.calories = round((+n.calories || 0) + cal);
+      n.protein  = round((+n.protein  || 0) + pro);
+      n.carbs    = round((+n.carbs    || 0) + carbs);
+      n.fats     = round((+n.fats     || 0) + fat);
+      if (water) n.water = round((+n.water || 0) + water);
+      save(); GD.closeModal(); render();
+      toast("Macros added");
     }
   };
   window.GD = GD;

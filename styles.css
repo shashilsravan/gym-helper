@@ -460,6 +460,39 @@ body.onboarding{padding-bottom:0}
 .dd-mval{flex:0 0 66px;font-size:12px;color:var(--label2);font-weight:600;text-align:right}
 .dd-mval.dim{color:var(--label3)}
 
+/* ── AI food log (macros tab) ───────────────────────────── */
+.ai-log-card{padding:14px 16px 16px}
+.ai-log-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px}
+.ai-log-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px}
+.ai-log-title svg{width:16px;height:16px;color:var(--yellow, #ffd60a)}
+.ai-log-row{display:flex;gap:8px;align-items:center}
+.ai-input{flex:1;min-width:0;background:var(--elev2);border:none;border-radius:11px;padding:11px 14px;font-size:15px;color:var(--label1);outline:none}
+.ai-input:focus{box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 40%,transparent)}
+.ai-cam-btn{width:44px;height:44px;border-radius:12px;background:var(--elev2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.ai-cam-btn svg{width:20px;height:20px;color:var(--label2)}
+.ai-send-btn{width:44px;height:44px;border-radius:12px;background:var(--blue);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:opacity .15s}
+.ai-send-btn svg{width:18px;height:18px;color:#fff}
+.ai-send-btn:disabled{opacity:.45}
+.ai-key-prompt{margin:4px 0 0;line-height:1.5}
+.link-btn{background:none;border:none;color:var(--blue);font-size:inherit;padding:0;cursor:pointer;font-family:inherit}
+
+/* ── AI result sheet ────────────────────────────────────── */
+.ai-result-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.ai-r{background:var(--elev2);border-radius:14px;padding:14px 10px;text-align:center}
+.ai-r b{display:block;font-size:22px;font-weight:700;letter-spacing:-.5px}
+.ai-r span{font-size:12px;color:var(--label3);margin-top:2px;display:block}
+
+/* ── AI key settings (plan tab) ─────────────────────────── */
+.ai-key-card{padding:14px 16px 16px}
+.ai-key-info{margin-bottom:10px}
+.ai-key-t{font-size:15px;font-weight:700;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.ai-key-t svg{width:16px;height:16px;color:var(--yellow, #ffd60a)}
+.ai-key-inp{display:flex;gap:8px;align-items:center}
+.ai-key-field{flex:1;min-width:0;background:var(--elev2);border:none;border-radius:11px;padding:11px 14px;font-size:14px;color:var(--label1);outline:none;font-family:monospace;letter-spacing:.04em}
+.ai-key-field:focus{box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 40%,transparent)}
+.ai-key-status{margin:8px 0 0;line-height:1.5}
+.ai-key-status.ok{color:var(--green)}
+
 /* ── crafted-by signature ───────────────────────────────── */
 .credit{display:flex;justify-content:center;padding:30px 16px calc(30px + var(--safe-bot))}
 .credit-inner{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;letter-spacing:.2px;color:var(--label3)}
