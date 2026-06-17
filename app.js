@@ -1214,7 +1214,7 @@
         </div>
         <p class="muted small" style="text-align:center;margin:6px 0 16px">Will be added to ${selectedDate === todayKey() ? "today's" : "this day's"} log.</p>
         <div class="btnrow">
-          <button class="btn" onclick="GD.addAIMacros(${Math.round(r.calories||0)},${Math.round(r.protein||0)},${Math.round(r.carbs||0)},${Math.round(r.fats||0)},${+(+(r.water||0)).toFixed(2)})">Add to log</button>
+          <button class="btn" onclick="GD.addAIMacros(${Math.round(r.calories||0)},${Math.round(r.protein||0)},${Math.round(r.carbs||0)},${Math.round(r.fats||0)})">Add to log</button>
           <button class="btn" onclick="GD.closeModal()">Cancel</button>
         </div>
         <button class="closebtn" onclick="GD.closeModal()">Close</button>`;
