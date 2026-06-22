@@ -1,0 +1,16 @@
+{
+  "name": "gym-helper",
+  "version": "1.0.0",
+  "description": "NIM Technologies - AI & Digital Solutions",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/analytics": "^1.1.1"
+  }
+}
